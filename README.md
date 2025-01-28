@@ -9,7 +9,7 @@ Built by [BitBonsai](https://github.com/bitbonsai)
 
 ## What's this?
 
-Just a tiny tool to help you spin up web projects faster. No magic, just convenience.
+Just an amazing tool to help you spin up web projects faster. No magic, just convenience.
 
 ## Installation
 

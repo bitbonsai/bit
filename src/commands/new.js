@@ -107,20 +107,29 @@ async function validateProjectName(name) {
     throw new Error('Project name can only contain lowercase letters, numbers, and hyphens');
   }
   
+  const projectPath = path.resolve(process.cwd(), name);
+  
   try {
-    await fs.access(path.resolve(process.cwd(), name));
-    throw new Error(`Directory ${name} already exists`);
+    const stats = await fs.stat(projectPath);
+    
+    if (stats.isDirectory()) {
+      console.error(kleur.red(`\n❌ Error: Directory '${name}' already exists in the current directory.`));
+      console.error(kleur.yellow('Please choose a different project name or remove the existing directory.\n'));
+      process.exit(1);
+    }
   } catch (error) {
     if (error.code === 'ENOENT') {
+      // Directory does not exist, which is good
       return true;
     }
+    // Rethrow any other unexpected errors
     throw error;
   }
 }
 
 function validateEmail(email) {
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return re.test(email);
+  return re.test(email) ? undefined : 'Please enter a valid email address';
 }
 
 async function getPocketBaseCredentials() {
@@ -132,6 +141,7 @@ async function getPocketBaseCredentials() {
     try {
       const config = JSON.parse(await fs.readFile(configPath, 'utf-8'));
       if (config.pocketbase?.admin?.email && config.pocketbase?.admin?.password) {
+        console.log(kleur.cyan('\n🔐  Using PocketBase admin credentials from ~/.bit-conf.json'));
         return {
           email: config.pocketbase.admin.email,
           pass: config.pocketbase.admin.password
@@ -148,7 +158,10 @@ async function getPocketBaseCredentials() {
 
     const email = await text({
       message: 'Enter admin email:',
-      validate: validateEmail,
+      validate: (value) => {
+        const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return re.test(value) ? undefined : 'Please enter a valid email address';
+      },
     });
 
     if (isCancel(email)) {
@@ -158,7 +171,7 @@ async function getPocketBaseCredentials() {
     const pass = await password({
       message: 'Enter admin password:',
       validate: (value) => {
-        if (value.length < 8) return 'Password must be at least 8 characters';
+        if (value.length < 5) return 'Password must be at least 5 characters';
         return;
       },
     });
@@ -174,7 +187,7 @@ async function getPocketBaseCredentials() {
   }
 }
 
-async function createProjectStructure(projectPath, name, options) {
+async function createProjectStructure(projectPath, name, options, pbCreds) {
   console.log('Creating base directories...');
   // Create base directories
   await fs.mkdir(projectPath, { recursive: true });
@@ -246,8 +259,7 @@ async function createProjectStructure(projectPath, name, options) {
     { name, pbVersion: options.pb }
   );
 
-  // Get PocketBase credentials and update docker-compose environment
-  const pbCreds = await getPocketBaseCredentials();
+  // Update docker-compose environment with provided credentials
   const envContent = `SUPERUSER_EMAIL=${pbCreds.email}\nSUPERUSER_PASSWORD=${pbCreds.pass}`;
   await fs.writeFile(path.join(projectPath, '.env'), envContent);
 
@@ -327,17 +339,17 @@ export function newCommand(program) {
         await verifyDockerEnvironment();
         
         await validateProjectName(name);
-        const { email, pass } = await getPocketBaseCredentials();
+        const pbCreds = await getPocketBaseCredentials();
         
         console.log(kleur.yellow('\n⚠️  Please save these credentials, you\'ll need them to access the admin UI'));
-        console.log(kleur.white(`Email: ${email}`));
-        console.log(kleur.white(`Password: ${'*'.repeat(pass.length)}\n`));
+        console.log(kleur.white(`Email: ${pbCreds.email}`));
+        console.log(kleur.white(`Password: ${'*'.repeat(pbCreds.pass.length)}\n`));
         
         const projectPath = path.resolve(process.cwd(), name);
         
         // Create project structure
         const structureSpinner = ora('Creating project...').start();
-        await createProjectStructure(projectPath, name, options);
+        await createProjectStructure(projectPath, name, options, pbCreds);
         structureSpinner.succeed(kleur.blue('Project structure created'));
         
         // Create environment files
@@ -346,27 +358,10 @@ export function newCommand(program) {
         // Root environment with PocketBase credentials
         await fs.writeFile(
           path.join(projectPath, '.env.development'),
-          `SUPERUSER_EMAIL=${email}\nSUPERUSER_PASSWORD=${pass}\n`
+          `SUPERUSER_EMAIL=${pbCreds.email}\nSUPERUSER_PASSWORD=${pbCreds.pass}\n`
         );
         
         envSpinner.succeed(kleur.blue('Environment files created'));
-        
-        // Create package-lock.json for version locking
-        const depsSpinner = ora('Creating package-lock.json...').start();
-        const { execa } = await import('execa');
-        const webPath = path.join(projectPath, 'apps/web');
-        
-        try {
-          await execa('npm', ['install', '--package-lock-only'], { 
-            cwd: webPath,
-            timeout: 30000 // 30 second timeout
-          });
-          
-          depsSpinner.succeed(kleur.blue('Package lock file created'));
-        } catch (error) {
-          depsSpinner.fail(kleur.yellow('Warning: Failed to create package-lock.json. Continuing without it.'));
-          console.warn(kleur.gray('This is not critical - dependencies will be installed when you run the project.'));
-        }
         
         outro(kleur.green('\n✨ Project created successfully!'));
         console.log(kleur.cyan().bold('Next steps:'));

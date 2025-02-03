@@ -13,7 +13,7 @@ primary_region = "ams"
   processes = ["app"]
 
 [env]
-  POCKETBASE_URL = "https://data.{{name}}.fly.dev"
+  POCKETBASE_URL = "https://{{name}}-pb.fly.dev"
   NODE_ENV = "production"
 
 [[vm]]

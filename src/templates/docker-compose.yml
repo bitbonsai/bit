@@ -1,3 +1,18 @@
+x-develop:
+  services:
+    web:
+      watch:
+        - path: ./apps/web
+          target: /app
+          action: sync
+          ignore:
+            - node_modules/
+            - .git/
+      urls:
+        - "http://localhost:4321"
+        - label: "PocketBase Admin"
+          url: "http://localhost:8090/_/"
+
 services:
   web:
     build:
@@ -10,27 +25,10 @@ services:
       - ./apps/web:/app
       - /app/node_modules
     environment:
-      - POCKETBASE_URL=http://0.0.0.0:8090
+      - POCKETBASE_URL=http://pocketbase:8090
       - NODE_ENV=development
     depends_on:
       - pocketbase
-    develop:
-      watch:
-        - action: sync
-          path: ./apps/web
-          target: /app
-          ignore:
-            - node_modules/
-            - .git/
-      watch_options:
-        ignore:
-          - node_modules/
-          - .git/
-      open:
-        - target: http://localhost:4321
-          label: Web App
-        - target: http://localhost:8090/_/
-          label: PocketBase Admin
 
   pocketbase:
     build:
